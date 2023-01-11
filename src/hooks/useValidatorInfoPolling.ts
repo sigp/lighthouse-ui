@@ -1,45 +1,27 @@
-import { useRecoilState, useRecoilValue, useRecoilValueLoadable, useSetRecoilState } from 'recoil'
+import { useRecoilState } from 'recoil'
 import usePollingInterval from './usePollingInterval'
 import { secondsInSlot } from '../constants/constants'
-import { fetchValidatorStatuses } from '../api/beacon'
 import { useEffect, useState } from 'react'
-import { selectBeaconUrl } from '../recoil/selectors/selectBeaconUrl'
-import { selectValidators } from '../recoil/selectors/selectValidators'
-import { validatorInfoInterval, validatorStateInfo } from '../recoil/atoms'
-import { Validator } from '../types/validator'
+import { validatorInfoInterval } from '../recoil/atoms'
+import useValidatorInfo from './useValidatorInfo'
+import useNextSlotDelay from './useNextSlotDelay'
 
 const useValidatorInfoPolling = () => {
-  const baseBeaconUrl = useRecoilValue(selectBeaconUrl)
   const [isReady, setReady] = useState(false)
-  const { contents: validators, state } = useRecoilValueLoadable(selectValidators)
-  const setStateInfo = useSetRecoilState(validatorStateInfo)
   const [validatorInterval, setInterval] = useRecoilState(validatorInfoInterval)
   const isSkip = Boolean(validatorInterval) && isReady
+  const { isDelayed } = useNextSlotDelay()
+
+  const { fetchValidatorInfo } = useValidatorInfo()
 
   useEffect(() => {
     setReady(true)
   }, [])
 
-  const fetchValidatorInfo = async () => {
-    if (!baseBeaconUrl || !validators) return
-
-    const beaconValidators = await fetchValidatorStatuses(
-      baseBeaconUrl,
-      validators.map((validator: Validator) => validator.pubKey).join(','),
-    )
-
-    setStateInfo(beaconValidators.data.data)
-  }
   const onClearInterval = () => setInterval(undefined)
 
-  useEffect(() => {
-    if (state === 'hasValue' && isReady) {
-      void fetchValidatorInfo()
-    }
-  }, [state, isReady])
-
   const { intervalId } = usePollingInterval(fetchValidatorInfo, secondsInSlot * 1000, {
-    isSkip,
+    isSkip: isSkip || isDelayed,
     onClearInterval,
   })
 
